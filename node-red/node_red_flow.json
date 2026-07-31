@@ -1,0 +1,748 @@
+[
+    {
+        "id": "a288cd4397f62ae2",
+        "type": "tab",
+        "label": "IoT Assignment",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "81bbca9dba5fba54",
+        "type": "serial in",
+        "z": "a288cd4397f62ae2",
+        "name": "Arduino Serial In",
+        "serial": "ffe0bd4863d1372e",
+        "x": 110,
+        "y": 300,
+        "wires": [
+            [
+                "33747768e206ffaa"
+            ]
+        ]
+    },
+    {
+        "id": "33747768e206ffaa",
+        "type": "function",
+        "z": "a288cd4397f62ae2",
+        "name": "Data Parser",
+        "func": "// Requirement A: Extracting and normalizing data from Serial input\nvar input = msg.payload.toString();\n\n// Using Regex to match Temperature and Humidity patterns from the Arduino string\nvar tMatch = input.match(/Temp:\\s*([\\d.]+)/);\nvar hMatch = input.match(/Hum:\\s*([\\d.]+)/);\n\nif (tMatch && hMatch) {\n    var t = parseFloat(tMatch[1]);\n    var h = parseFloat(hMatch[1]);\n\n    // Storing values in flow context for global accessibility within the flow\n    flow.set('currentTemp', t);\n    flow.set('currentHumi', h);\n\n    // Returning separate messages for MQTT topics and Dashboard gauges\n    return [\n        { topic: \"home/temp\", payload: t },\n        { topic: \"home/humi\", payload: h }\n    ];\n}\nreturn null; // Ignore malformed strings",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 310,
+        "y": 300,
+        "wires": [
+            [
+                "ec36f316b6844e4c",
+                "b01edc950829c3e3",
+                "3ba13e42a7edf4c6",
+                "c220efb16db2e43b",
+                "eba434230e969b6f",
+                "1ee70b9c4a5ff679"
+            ],
+            [
+                "6bbbf687d6080906",
+                "4c50b11df92c993d",
+                "c220efb16db2e43b",
+                "2e70d2dd8bfcc81c",
+                "3a3199fc62649566"
+            ]
+        ]
+    },
+    {
+        "id": "3ba13e42a7edf4c6",
+        "type": "function",
+        "z": "a288cd4397f62ae2",
+        "name": "Heat Index Calc",
+        "func": "// Calculate HI\nvar t = msg.payload;\nvar h = flow.get('currentHumi') || 0;\nvar hi = 0.5 * (t + 61.0 + ((t - 68.0) * 1.2) + (h * 0.094));\nmsg.payload = parseFloat(hi.toFixed(2));\nmsg.topic = \"Heat Index\";\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 750,
+        "y": 360,
+        "wires": [
+            [
+                "a15cef09477d8754",
+                "5a425ffa5737bf8c"
+            ]
+        ]
+    },
+    {
+        "id": "f892a7e3ee4bec2b",
+        "type": "function",
+        "z": "a288cd4397f62ae2",
+        "name": "SQL Insert (Raw)",
+        "func": "// Requirement B: Persistent Data Logging\nvar t = flow.get('currentTemp');\nvar h = flow.get('currentHumi'); // Retrieving humidity from flow context\nvar hi = msg.payload;            // Heat Index from the previous node\n\n// Constructing the SQL INSERT statement with auto-timestamp\nmsg.topic = \"INSERT INTO sensor_data (temperature, humidity, heat_index, timestamp) VALUES (\" \n            + t + \", \" + h + \", \" + hi + \", CURRENT_TIMESTAMP);\";\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1160,
+        "y": 360,
+        "wires": [
+            [
+                "b7a26365399fd0e3"
+            ]
+        ]
+    },
+    {
+        "id": "c220efb16db2e43b",
+        "type": "function",
+        "z": "a288cd4397f62ae2",
+        "name": "Requirement D Logic",
+        "func": "// Get values from flow memory\nvar t = flow.get('currentTemp') || 0;\nvar h = flow.get('currentHumi') || 0;\n\n// Requirement D Logic (Adjusted for testing)\nif (t > 30 && h > 70) {\n    node.status({fill:\"red\", shape:\"dot\", text:\"ALERT ACTIVE\"});\n    return [\n        { payload: \"alert\", topic: \"home/alert\" }, // Output 1 -> MQTT\n        { payload: \"LED_ON\" }                    // Output 2 -> Serial\n    ];\n} else {\n    node.status({fill:\"green\", shape:\"ring\", text:\"Normal\"});\n    return [\n        { payload: \"stopalert\", topic: \"home/alert\" }, // Output 1 -> MQTT\n        { payload: \"LED_OFF\" }                       // Output 2 -> Serial\n    ];\n}",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 770,
+        "y": 240,
+        "wires": [
+            [
+                "e43ff36bbea30bff",
+                "f678496a2861d2a4"
+            ],
+            [
+                "23c850dce571e09b"
+            ]
+        ]
+    },
+    {
+        "id": "f85a177c4fb10507",
+        "type": "inject",
+        "z": "a288cd4397f62ae2",
+        "name": "Hourly Trigger",
+        "repeat": "3600",
+        "crontab": "",
+        "once": false,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 740,
+        "y": 540,
+        "wires": [
+            [
+                "b21f79af9a3a9236"
+            ]
+        ]
+    },
+    {
+        "id": "b21f79af9a3a9236",
+        "type": "function",
+        "z": "a288cd4397f62ae2",
+        "name": "SQL Hourly Avg",
+        "func": "// Requirement C: Fetching average values for Temperature and Humidity\nmsg.topic = \"SELECT AVG(temperature) as avgT, AVG(humidity) as avgH FROM sensor_data WHERE timestamp > datetime('now', '-1 hour');\";\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 940,
+        "y": 540,
+        "wires": [
+            [
+                "b7a26365399fd0e3"
+            ]
+        ]
+    },
+    {
+        "id": "4156d6c4313c09b6",
+        "type": "function",
+        "z": "a288cd4397f62ae2",
+        "name": "Store & Format",
+        "func": "// Requirement C: Prevent NaN and stabilize Dashboard display\n// The database sends an empty array after every INSERT operation.\n// We must check for this and stop the flow to keep the Dashboard stable.\n\nif (!msg.payload || msg.payload.length === 0 || msg.payload[0].avgT === undefined) {\n    // Return null stops the empty message from reaching the Dashboard\n    return null; \n}\n\n// If we reach here, it means we have valid data from the SELECT query\nvar t = parseFloat(msg.payload[0].avgT).toFixed(2);\nvar h = parseFloat(msg.payload[0].avgH).toFixed(2);\n\n// Output 1 (Top): For the SQLite node (INSERT)\nvar msgSql = { \n    topic: \"INSERT INTO hourly_stats (avg_temp, avg_hum, timestamp) VALUES (\" + t + \", \" + h + \", CURRENT_TIMESTAMP);\" \n};\n\n// Output 2 (Bottom): For the Dashboard Text node\nvar msgUi = { \n    payload: \"Avg Temp: \" + t + \" °C | Avg Hum: \" + h + \" %\" \n};\n\nreturn [msgSql, msgUi];",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1220,
+        "y": 640,
+        "wires": [
+            [
+                "b7a26365399fd0e3"
+            ],
+            [
+                "7e4efe7343fd460e"
+            ]
+        ]
+    },
+    {
+        "id": "56d16c0155ee6743",
+        "type": "inject",
+        "z": "a288cd4397f62ae2",
+        "name": "Refresh List",
+        "repeat": "60",
+        "crontab": "",
+        "once": true,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 730,
+        "y": 620,
+        "wires": [
+            [
+                "be35b60e6dda69f5"
+            ]
+        ]
+    },
+    {
+        "id": "be35b60e6dda69f5",
+        "type": "function",
+        "z": "a288cd4397f62ae2",
+        "name": "SQL Fetch 24h",
+        "func": "// Requirement C: Retrieving the last 24 hourly averages from the database\nmsg.topic = \"SELECT timestamp, avg_temp, avg_hum FROM hourly_stats ORDER BY timestamp DESC LIMIT 24;\";\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 940,
+        "y": 620,
+        "wires": [
+            [
+                "b7a26365399fd0e3"
+            ]
+        ]
+    },
+    {
+        "id": "bd81269cecc32477",
+        "type": "ui_template",
+        "z": "a288cd4397f62ae2",
+        "group": "g1",
+        "name": "24h UI List",
+        "order": 10,
+        "width": 12,
+        "height": 5,
+        "format": "<div style=\"height:150px; overflow-y:scroll; border:1px solid #ddd; padding:10px;\">\n    <b>Hourly Average History (Last 24h)</b>\n    <div ng-repeat=\"row in msg.payload\">\n        <small>{{row.timestamp}}</small> → <b>{{row.avg_temp}}°C</b>\n    </div>\n</div>",
+        "storeOutMessages": true,
+        "fwdInMessages": true,
+        "resendOnRefresh": false,
+        "templateScope": "local",
+        "className": "",
+        "x": 1470,
+        "y": 620,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "d04dd847d7540808",
+        "type": "inject",
+        "z": "a288cd4397f62ae2",
+        "name": "Initialize DB",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": "",
+        "topic": "",
+        "payload": "",
+        "payloadType": "str",
+        "x": 750,
+        "y": 480,
+        "wires": [
+            [
+                "ba6577d801d50504"
+            ]
+        ]
+    },
+    {
+        "id": "ba6577d801d50504",
+        "type": "function",
+        "z": "a288cd4397f62ae2",
+        "name": "Create Tables",
+        "func": "// Requirement B & C: Initializing Database Schema\nvar msg1 = { \n    topic: \"CREATE TABLE IF NOT EXISTS sensor_data (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, temperature REAL, humidity REAL, heat_index REAL);\" \n};\n\nvar msg2 = { \n    topic: \"CREATE TABLE IF NOT EXISTS hourly_stats (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, avg_temp REAL, avg_hum REAL);\" \n};\n\n// Return as an array of messages to be executed sequentially\nreturn [ [msg1, msg2] ];",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 950,
+        "y": 480,
+        "wires": [
+            [
+                "b7a26365399fd0e3"
+            ]
+        ]
+    },
+    {
+        "id": "b7a26365399fd0e3",
+        "type": "sqlite",
+        "z": "a288cd4397f62ae2",
+        "mydb": "db1",
+        "sql": "",
+        "name": "iot_project.db",
+        "x": 1230,
+        "y": 500,
+        "wires": [
+            [
+                "75e1be43babf72ea",
+                "4156d6c4313c09b6",
+                "bd81269cecc32477"
+            ]
+        ]
+    },
+    {
+        "id": "e43ff36bbea30bff",
+        "type": "mqtt out",
+        "z": "a288cd4397f62ae2",
+        "name": "MQTT Alert",
+        "topic": "home/alert",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "mqtt_broker_local",
+        "x": 1020,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "23c850dce571e09b",
+        "type": "serial out",
+        "z": "a288cd4397f62ae2",
+        "name": "Arduino Serial Out",
+        "serial": "ffe0bd4863d1372e",
+        "x": 1040,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "ec36f316b6844e4c",
+        "type": "ui_gauge",
+        "z": "a288cd4397f62ae2",
+        "name": "",
+        "group": "g1",
+        "order": 1,
+        "width": 6,
+        "height": 3,
+        "gtype": "gage",
+        "title": "Temperature",
+        "label": "Temperature",
+        "format": "{{value}}°C",
+        "min": 0,
+        "max": 50,
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "",
+        "seg2": "",
+        "diff": false,
+        "className": "",
+        "x": 760,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "6bbbf687d6080906",
+        "type": "ui_gauge",
+        "z": "a288cd4397f62ae2",
+        "name": "",
+        "group": "g1",
+        "order": 2,
+        "width": 6,
+        "height": 3,
+        "gtype": "gage",
+        "title": "Humidity",
+        "label": "Humidity",
+        "format": "{{value}}%",
+        "min": 0,
+        "max": 100,
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "",
+        "seg2": "",
+        "diff": false,
+        "className": "",
+        "x": 750,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "7e4efe7343fd460e",
+        "type": "ui_text",
+        "z": "a288cd4397f62ae2",
+        "group": "g1",
+        "order": 3,
+        "width": "",
+        "height": "",
+        "name": "",
+        "label": "Current Hourly Avg",
+        "format": "{{msg.payload}} ",
+        "layout": "",
+        "className": "",
+        "style": false,
+        "font": "",
+        "fontSize": "",
+        "color": "#000000",
+        "x": 1430,
+        "y": 680,
+        "wires": []
+    },
+    {
+        "id": "b01edc950829c3e3",
+        "type": "ui_chart",
+        "z": "a288cd4397f62ae2",
+        "name": "",
+        "group": "g1",
+        "order": 4,
+        "width": 12,
+        "height": "4",
+        "label": "Temperature vs Time",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "",
+        "dot": false,
+        "ymin": "0",
+        "ymax": "50",
+        "removeOlder": "1",
+        "removeOlderPoints": "",
+        "removeOlderUnit": "3600",
+        "cutout": "",
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#ff0000",
+            "#aec7e8",
+            "#ff7f0e",
+            "#2ca02c",
+            "#98df8a",
+            "#ff0000",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "className": "",
+        "x": 780,
+        "y": 60,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "4c50b11df92c993d",
+        "type": "ui_chart",
+        "z": "a288cd4397f62ae2",
+        "name": "",
+        "group": "g1",
+        "order": 5,
+        "width": 12,
+        "height": "4",
+        "label": "Humidity vs Time",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "",
+        "dot": false,
+        "ymin": "0",
+        "ymax": "100",
+        "removeOlder": "1",
+        "removeOlderPoints": "",
+        "removeOlderUnit": "3600",
+        "cutout": "",
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#1f77b4",
+            "#aec7e8",
+            "#ff7f0e",
+            "#2ca02c",
+            "#98df8a",
+            "#ff0000",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "className": "",
+        "x": 770,
+        "y": 100,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "a15cef09477d8754",
+        "type": "ui_chart",
+        "z": "a288cd4397f62ae2",
+        "name": "",
+        "group": "g1",
+        "order": 6,
+        "width": 12,
+        "height": "4",
+        "label": "Heat Index vs Time",
+        "chartType": "line",
+        "legend": "true",
+        "xformat": "HH:mm:ss",
+        "interpolate": "linear",
+        "nodata": "",
+        "dot": false,
+        "ymin": "0",
+        "ymax": "50",
+        "removeOlder": "1",
+        "removeOlderPoints": "",
+        "removeOlderUnit": "3600",
+        "cutout": "",
+        "useOneColor": false,
+        "useUTC": false,
+        "colors": [
+            "#ff7f0e",
+            "#aec7e8",
+            "#ff7f0e",
+            "#2ca02c",
+            "#98df8a",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "outputs": 1,
+        "useDifferentColor": false,
+        "className": "",
+        "x": 960,
+        "y": 420,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "75e1be43babf72ea",
+        "type": "debug",
+        "z": "a288cd4397f62ae2",
+        "name": "Global Debug",
+        "active": true,
+        "x": 1450,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "5a425ffa5737bf8c",
+        "type": "delay",
+        "z": "a288cd4397f62ae2",
+        "name": "1-Min Throttle",
+        "pauseType": "rate",
+        "timeout": "5",
+        "timeoutUnits": "seconds",
+        "rate": "1",
+        "nbRateUnits": "1",
+        "rateUnits": "minute",
+        "randomFirst": "1",
+        "randomLast": "5",
+        "randomUnits": "seconds",
+        "drop": true,
+        "allowrate": false,
+        "outputs": 1,
+        "x": 950,
+        "y": 360,
+        "wires": [
+            [
+                "f892a7e3ee4bec2b"
+            ]
+        ]
+    },
+    {
+        "id": "f678496a2861d2a4",
+        "type": "debug",
+        "z": "a288cd4397f62ae2",
+        "name": "Alert Debug",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1020,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "eba434230e969b6f",
+        "type": "mqtt out",
+        "z": "a288cd4397f62ae2",
+        "name": "MQTT Temp",
+        "topic": "home/temp",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "mqtt_broker_local",
+        "x": 550,
+        "y": 440,
+        "wires": []
+    },
+    {
+        "id": "2e70d2dd8bfcc81c",
+        "type": "mqtt out",
+        "z": "a288cd4397f62ae2",
+        "name": "MQTT Hum",
+        "topic": "home/hum",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "mqtt_broker_local",
+        "x": 510,
+        "y": 500,
+        "wires": []
+    },
+    {
+        "id": "1ee70b9c4a5ff679",
+        "type": "debug",
+        "z": "a288cd4397f62ae2",
+        "name": "Temp Debug",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 550,
+        "y": 400,
+        "wires": []
+    },
+    {
+        "id": "3a3199fc62649566",
+        "type": "debug",
+        "z": "a288cd4397f62ae2",
+        "name": "Hum Debug",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 470,
+        "y": 560,
+        "wires": []
+    },
+    {
+        "id": "ffe0bd4863d1372e",
+        "type": "serial-port",
+        "name": "",
+        "serialport": "COM3",
+        "serialbaud": "9600",
+        "databits": 8,
+        "parity": "none",
+        "stopbits": 1,
+        "waitfor": "",
+        "dtr": "none",
+        "rts": "none",
+        "cts": "none",
+        "dsr": "none",
+        "newline": "\\n",
+        "bin": "false",
+        "out": "char",
+        "addchar": "\\n",
+        "responsetimeout": 10000
+    },
+    {
+        "id": "g1",
+        "type": "ui_group",
+        "name": "IoT Dashboard",
+        "tab": "t1",
+        "order": 1,
+        "disp": true,
+        "width": "12",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "db1",
+        "type": "sqlitedb",
+        "db": "C:\\Users\\Solringen\\Desktop\\Μεταπτυχιακό\\1ο Εξάμηνο\\Internet of Things\\Assignment\\iot_project.db",
+        "mode": "RWC"
+    },
+    {
+        "id": "mqtt_broker_local",
+        "type": "mqtt-broker",
+        "name": "Local Mosquitto",
+        "broker": "127.0.0.1",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": 4,
+        "keepalive": 15,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "t1",
+        "type": "ui_tab",
+        "name": "Home",
+        "icon": "dashboard"
+    },
+    {
+        "id": "3e0790b0917ee2cd",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-node-serialport": "2.0.3",
+            "node-red-dashboard": "3.6.6",
+            "node-red-node-sqlite": "1.1.1"
+        }
+    }
+]
